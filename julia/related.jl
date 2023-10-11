@@ -58,6 +58,18 @@ function fastmaxindex!(xs::Vector, topn, maxn, maxv)
     return maxn
 end
 
+function fastmaxindex2!(xs::Vector{T}, topn, maxn, maxv) where T
+    pq = PQueue{T}(100)
+    for (i, x) in enumerate(xs)
+        enqueue!(pq, i, 100-x)
+    end
+    for i in 1:topn
+        maxn[i] = dequeue!(pq)
+    end
+    return maxn
+end
+
+
 function related(posts)
     for T in (UInt8, UInt16, UInt32, UInt64)
         if length(posts) < typemax(T)
@@ -97,13 +109,40 @@ function related(::Type{T}, posts) where {T}
         # don't self count
         taggedpostcount[i] = 0
 
-        fastmaxindex!(taggedpostcount, topn, maxn, maxv)
+        fastmaxindex2!(taggedpostcount, topn, maxn, maxv)
 
         relatedpost = RelatedPost(post._id, post.tags, SVector{topn}(@view posts[maxn]))
         relatedposts[i] = relatedpost
     end
 
     return relatedposts
+end
+
+mutable struct PQueue{T}
+    min::Int
+    nbins::Int
+    content::Vector{Vector{T}}
+end
+
+# initialize new queue
+PQueue{T}(nbins) where T = PQueue(nbins + 1, nbins, [Vector{T}() for _ in 1:nbins])
+PQueue(nbins, item::T, weight=1) where T = enqueue!(PQueue{T}(nbins), item, weight)
+
+Base.isempty(q::PQueue) = q.min > q.nbins
+
+function enqueue!(q::PQueue, item, weight)
+    push!(q.content[weight], item)
+    q.min = min(q.min, weight)
+    return q
+end
+
+function dequeue!(q::PQueue)
+    elem = pop!(q.content[q.min])
+    # increase smallestbin, if elem was last in bin
+    while q.min ≤ q.nbins && isempty(q.content[q.min])
+        q.min += 1
+    end
+    return elem
 end
 
 const res = relatedIO()
